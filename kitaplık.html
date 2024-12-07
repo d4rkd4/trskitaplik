@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Çok Sınıflı Kitaplık Yönetimi</title>
+    <!-- Roboto fontu için Google Fonts linki -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f0f8ff;
+        }
+        header {
+            text-align: center;
+            background-color: #FFA500;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            position: relative;
+            margin: 20px;
+        }
+        header h1 {
+            color: #fff;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        header img {
+            width: 100px;
+            height: 100px;
+            position: absolute;
+            right: 20px;
+        }
+        #edit-button, #save-button, #pin-submit, #add-student, #delete-student, #add-book, #delete-book, #assign-book, #list-history, #best-button, #history-button {
+            background-color: #007bb5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 10px;
+        }
+        #edit-button:hover, #save-button:hover, #pin-submit:hover, #add-student:hover, #delete-student:hover, #add-book:hover, #delete-book:hover, #assign-book:hover, #list-history:hover, #best-button:hover, #history-button:hover {
+            background-color: #005f8c;
+        }
+        #delete-student, #delete-book {
+            background-color: #d9534f;
+        }
+        #delete-student:hover, #delete-book:hover {
+            background-color: #c9302c;
+        }
+        #best-button {
+            background-color: #28a745;
+        }
+        #best-button:hover {
+            background-color: #218838;
+        }
+        table {
+            width: 90%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #007bb5;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #ddd;
+        }
+        .ongoing td {
+            color: red;
+        }
+        .completed td {
+            color: green;
+        }
+        #pin-section, #edit-section {
+            text-align: center;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            width: 60%;
+        }
+        #edit-section {
+            display: none;
+        }
+        #student-book-management div {
+            margin: 15px 0;
+        }
+        #student-book-management input, #student-book-management select {
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            width: calc(50% - 140px);
+        }
+        #reading-history-section, #best-section {
+            text-align: center;
+            margin: 20px auto;
+            width: 60%;
+        }
+        #reading-history-table, #best-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .top-three {
+            font-weight: bold;
+            color: #d4af37;
+            position: relative;
+            animation: borderPulse 1.5s infinite;
+        }
+        @keyframes borderPulse {
+            0% {
+                box-shadow: 0 0 5px 3px rgba(255, 215, 0, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 10px 5px rgba(255, 215, 0, 1);
+            }
+            100% {
+                box-shadow: 0 0 5px 3px rgba(255, 215, 0, 0.5);
+            }
+        }
+
+        /* "İşlemler" sütunu varsayılan olarak gizlenir */
+        .action-column, .action-cell {
+            display: none;
+        }
+
+        /* "edit-mode" sınıfı aktifken "İşlemler" sütunu görünür olur */
+        .edit-mode .action-column, 
+        .edit-mode .action-cell {
+            display: table-cell;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-app.js";
+        import { getDatabase, ref, set, get, child, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "sinif-kutuphane-alc.firebaseapp.com",
+            databaseURL: "https://sinif-kutuphane-alc-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "sinif-kutuphane-alc",
+            storageBucket: "sinif-kutuphane-alc.appspot.com",
+            messagingSenderId: "184048570892",
+            appId: "1:184048570892:web:76302a4eb4c26bba83d429",
+            measurementId: "G-RNXHPXG1ME"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        document.addEventListener("DOMContentLoaded", function() {
+            const mainElement = document.querySelector("main"); // 'edit-mode' sınıfını eklemek için main elementi
+            const classSelect = document.getElementById("class-select");
+            let classID = null; // Başlangıçta seçili sınıf yok
+            let isEditMode = false; // Düzenleme modunu takip eder
+
+            const studentHistorySelect = document.getElementById("student-history-select");
+            const listHistoryButton = document.getElementById("list-history");
+            const readingHistoryTable = document.getElementById("reading-history-table");
+            const readingHistoryBody = document.getElementById("reading-history");
+            const booksTableBody = document.getElementById("books");
+            const studentSelect = document.getElementById("student-select");
+            const bookSelect = document.getElementById("book-select");
+            const bestButton = document.getElementById("best-button");
+            const historyButton = document.getElementById("history-button");
+            const bestSection = document.getElementById("best-section");
+            const readingHistorySection = document.getElementById("reading-history-section");
+            
+            const pinSection = document.getElementById("pin-section");
+            const pinInput = document.getElementById("pin-input");
+            const pinSubmit = document.getElementById("pin-submit");
+            const editSection = document.getElementById("edit-section");
+            const saveButton = document.getElementById("save-button");
+            const editButton = document.getElementById("edit-button");
+
+            const addStudentButton = document.getElementById("add-student");
+            const deleteStudentButton = document.getElementById("delete-student");
+            const addBookButton = document.getElementById("add-book");
+            const deleteBookButton = document.getElementById("delete-book");
+            const assignBookButton = document.getElementById("assign-book");
+
+            // Sınıfları dinamik olarak yükle ve class-select dropdown'una ekle
+            function loadClassesDropdown() {
+                const classesRef = ref(database, 'classes');
+                onValue(classesRef, (snapshot) => {
+                    classSelect.innerHTML = '<option value="">Sınıf Seçin</option>'; // İlk seçeneği ekle
+                    if (snapshot.exists()) {
+                        const classes = snapshot.val();
+                        for (let cls in classes) {
+                            const option = document.createElement("option");
+                            option.value = cls;
+                            option.textContent = cls;
+                            classSelect.appendChild(option);
+                        }
+                    } else {
+                        classSelect.innerHTML += '<option value="">Hiç sınıf yok</option>';
+                    }
+                });
+            }
+
+            loadClassesDropdown(); // Sayfa yüklendiğinde sınıfları yükle
+
+            // Sınıf seçildiğinde
+            classSelect.addEventListener("change", () => {
+                classID = classSelect.value;
+                if (classID) {
+                    clearUI();
+                    closeEditMode();
+                    loadAllData();
+                } else {
+                    clearUI();
+                    closeEditMode();
+                }
+            });
+
+            function clearUI() {
+                studentHistorySelect.innerHTML = '<option value="">Öğrenci Seçin</option>';
+                studentSelect.innerHTML = '<option value="">Öğrenci Seçin</option>';
+                bookSelect.innerHTML = '<option value="">Kitap Seçin</option>';
+                booksTableBody.innerHTML = "";
+                readingHistoryBody.innerHTML = "";
+                readingHistoryTable.style.display = "none";
+                bestSection.style.display = "none";
+                readingHistorySection.style.display = "none";
+            }
+
+            function loadAllData() {
+                loadDataFromFirebase();
+                loadStudents();
+                loadBooksList();
+            }
+
+            // Düzenleme modunu kapatma fonksiyonu
+            function closeEditMode() {
+                editSection.style.display = "none";
+                pinSection.style.display = "none";
+                isEditMode = false;
+                mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
+                updateReturnButtons();
+                pinInput.value = "";
+            }
+
+            // Kitap atamaları (books) verisini yükler
+            function loadDataFromFirebase() {
+                const classRef = ref(database, 'classes/' + classID + '/books');
+                get(classRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        let books = Object.values(snapshot.val());
+                        // Öncelikle okuyor durumuna göre sıralama
+                        books.sort((a, b) => a.status === 'okuyor' && b.status !== 'okuyor' ? -1 : 1);
+                        // En fazla 50 satır gözüksün
+                        books = books.slice(0, 50);
+                        booksTableBody.innerHTML = "";
+                        books.forEach(book => {
+                            const row = document.createElement("tr");
+                            row.className = book.status === "okuyor" ? "ongoing" : "completed";
+                            row.innerHTML = `
+                                <td>${book.studentName}</td>
+                                <td>${book.bookName}</td>
+                                <td>${book.borrowDate}</td>
+                                <td>${book.status}</td>
+                                <td class="action-cell">
+                                    <button class="return-book" ${!isEditMode || book.status !== "okuyor" ? 'disabled' : ''}>Teslim Et</button>
+                                </td>
+                            `;
+                            booksTableBody.appendChild(row);
+                        });
+                    } else {
+                        booksTableBody.innerHTML = "";
+                    }
+                }).catch((error) => {
+                    console.error("Veri yükleme hatası:", error);
+                });
+            }
+
+            // Tüm öğrencileri yükler ve Türkçe alfabetik sıralar
+            function loadStudents() {
+                const studentsRef = ref(database, 'classes/' + classID + '/students');
+                get(studentsRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        let students = Object.values(snapshot.val());
+                        // Öğrencileri Türkçe alfabe sırasına göre sıralama
+                        students.sort((a, b) => a.studentName.localeCompare(b.studentName, 'tr'));
+
+                        const existingStudentValues = Array.from(studentSelect.options).map(opt => opt.value);
+                        const existingHistoryValues = Array.from(studentHistorySelect.options).map(opt => opt.value);
+
+                        students.forEach(student => {
+                            if (!existingStudentValues.includes(student.studentName)) {
+                                const option = document.createElement("option");
+                                option.value = student.studentName;
+                                option.textContent = student.studentName;
+                                studentSelect.appendChild(option);
+                            }
+                            if (!existingHistoryValues.includes(student.studentName)) {
+                                const historyOption = document.createElement("option");
+                                historyOption.value = student.studentName;
+                                historyOption.textContent = student.studentName;
+                                studentHistorySelect.appendChild(historyOption);
+                            }
+                        });
+                    }
+                }).catch((error) => {
+                    console.error("Öğrenci yükleme hatası:", error);
+                });
+            }
+
+            // Tüm kitapları yükler ve Türkçe alfabetik sıralar
+            function loadBooksList() {
+                const booksListRef = ref(database, 'classes/' + classID + '/booksList');
+                get(booksListRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        let booksList = Object.values(snapshot.val());
+                        // Kitapları Türkçe alfabe sırasına göre sıralama
+                        booksList.sort((a,b) => a.bookName.localeCompare(b.bookName, 'tr'));
+
+                        const existingBookValues = Array.from(bookSelect.options).map(opt => opt.value);
+
+                        booksList.forEach(book => {
+                            if (!existingBookValues.includes(book.bookName)) {
+                                const bookOption = document.createElement("option");
+                                bookOption.value = book.bookName;
+                                bookOption.textContent = book.bookName;
+                                bookSelect.appendChild(bookOption);
+                            }
+                        });
+                    }
+                }).catch((error) => {
+                    console.error("Kitap listesi yükleme hatası:", error);
+                });
+            }
+
+            // "Teslim Et" butonlarının durumunu günceller
+            function updateReturnButtons() {
+                const returnButtons = document.querySelectorAll(".return-book");
+                returnButtons.forEach(button => {
+                    if (isEditMode && button.textContent === "Teslim Et") {
+                        button.disabled = false;
+                    } else if (button.textContent === "Teslim Edildi") {
+                        button.disabled = true;
+                    } else {
+                        button.disabled = true;
+                    }
+                });
+            }
+
+            editButton.addEventListener("click", () => {
+                // Düzenle butonuna basıldığında PIN girişi tekrar gösterilsin.
+                pinSection.style.display = "block";
+                editSection.style.display = "none";
+                isEditMode = false;
+                mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
+                updateReturnButtons();
+            });
+
+            pinSubmit.addEventListener("click", () => {
+                const enteredPin = pinInput.value;
+                if (!classID) {
+                    alert("Lütfen bir sınıf seçin.");
+                    return;
+                }
+                const classPinRef = ref(database, 'classes/' + classID + '/pin');
+                get(classPinRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        const correctPin = snapshot.val();
+                        if (enteredPin === correctPin) {
+                            pinSection.style.display = "none";
+                            editSection.style.display = "block";
+                            isEditMode = true;
+                            mainElement.classList.add("edit-mode"); // 'edit-mode' sınıfını ekle
+                            loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
+                        } else {
+                            alert("Yanlış PIN!");
+                        }
+                    } else {
+                        alert("Bu sınıf için PIN tanımlı değil.");
+                    }
+                }).catch((error) => {
+                    console.error("PIN doğrulama hatası:", error);
+                });
+            });
+
+            // Öğrenci ekle
+            addStudentButton.addEventListener("click", () => {
+                const studentName = document.getElementById("new-student-name").value.trim();
+                if (studentName) {
+                    const newStudentRef = push(ref(database, 'classes/' + classID + '/students'));
+                    set(newStudentRef, {
+                        studentName: studentName
+                    }).then(() => {
+                        console.log("Öğrenci başarıyla kaydedildi.");
+                        const option = document.createElement("option");
+                        option.value = studentName;
+                        option.textContent = studentName;
+                        studentSelect.appendChild(option);
+
+                        const historyOption = document.createElement("option");
+                        historyOption.value = studentName;
+                        historyOption.textContent = studentName;
+                        studentHistorySelect.appendChild(historyOption);
+
+                        loadDataFromFirebase();
+                        loadStudents();
+                        document.getElementById("new-student-name").value = "";
+                    }).catch((error) => {
+                        console.error("Öğrenci kaydetme hatası:", error);
+                    });
+                } else {
+                    alert("Lütfen bir öğrenci adı girin!");
+                }
+            });
+
+            // Öğrenci sil
+            deleteStudentButton.addEventListener("click", () => {
+                const studentName = document.getElementById("new-student-name").value.trim();
+                if (!studentName) {
+                    alert("Lütfen bir öğrenci adı girin!");
+                    return;
+                }
+
+                if (confirm("Bu öğrenciyi silmek istediğinize emin misiniz?")) {
+                    const studentsRef = ref(database, 'classes/' + classID + '/students');
+                    get(studentsRef).then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const studentsData = snapshot.val();
+                            for (let key in studentsData) {
+                                if (studentsData[key].studentName === studentName) {
+                                    remove(ref(database, 'classes/' + classID + '/students/' + key)).then(() => {
+                                        console.log("Öğrenci başarıyla silindi.");
+                                        const studentIndex = Array.from(studentSelect.options).findIndex(option => option.value === studentName);
+                                        if (studentIndex > -1) {
+                                            studentSelect.remove(studentIndex);
+                                        }
+
+                                        const historyIndex = Array.from(studentHistorySelect.options).findIndex(option => option.value === studentName);
+                                        if (historyIndex > -1) {
+                                            studentHistorySelect.remove(historyIndex);
+                                        }
+
+                                        const booksRef = ref(database, 'classes/' + classID + '/books');
+                                        get(booksRef).then((booksSnapshot) => {
+                                            if (booksSnapshot.exists()) {
+                                                const booksData = booksSnapshot.val();
+                                                const updates = {};
+                                                for (let bookKey in booksData) {
+                                                    if (booksData[bookKey].studentName === studentName) {
+                                                        updates[bookKey] = null; // Silmek için null değeri atanır
+                                                    }
+                                                }
+                                                return update(booksRef, updates);
+                                            }
+                                        }).then(() => {
+                                            loadDataFromFirebase();
+                                        }).catch((error) => {
+                                            console.error("Kitap silme hatası:", error);
+                                        });
+
+                                        document.getElementById("new-student-name").value = "";
+                                    }).catch((error) => {
+                                        console.error("Öğrenci silme hatası:", error);
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+
+            // Kitap ekle
+            addBookButton.addEventListener("click", () => {
+                const bookName = document.getElementById("new-book-name").value.trim();
+                if (bookName) {
+                    const newBookRef = push(ref(database, 'classes/' + classID + '/booksList'));
+                    set(newBookRef, {
+                        bookName: bookName
+                    }).then(() => {
+                        console.log("Kitap başarıyla kaydedildi.");
+                        const option = document.createElement("option");
+                        option.value = bookName;
+                        option.textContent = bookName;
+                        bookSelect.appendChild(option);
+
+                        loadBooksList();
+                        document.getElementById("new-book-name").value = "";
+                    }).catch((error) => {
+                        console.error("Kitap kaydetme hatası:", error);
+                    });
+                } else {
+                    alert("Lütfen bir kitap adı girin!");
+                }
+            });
+
+            // Kitap sil
+            deleteBookButton.addEventListener("click", () => {
+                const bookName = document.getElementById("new-book-name").value.trim();
+                if (!bookName) {
+                    alert("Lütfen bir kitap adı girin!");
+                    return;
+                }
+
+                if (confirm("Bu kitabı silmek istediğinize emin misiniz?")) {
+                    const booksListRef = ref(database, 'classes/' + classID + '/booksList');
+                    get(booksListRef).then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const booksListData = snapshot.val();
+                            for (let key in booksListData) {
+                                if (booksListData[key].bookName === bookName) {
+                                    remove(ref(database, 'classes/' + classID + '/booksList/' + key)).then(() => {
+                                        console.log("Kitap başarıyla silindi.");
+                                        const bookIndex = Array.from(bookSelect.options).findIndex(option => option.value === bookName);
+                                        if (bookIndex > -1) {
+                                            bookSelect.remove(bookIndex);
+                                        }
+
+                                        const booksRef = ref(database, 'classes/' + classID + '/books');
+                                        get(booksRef).then((booksSnapshot) => {
+                                            if (booksSnapshot.exists()) {
+                                                const booksData = booksSnapshot.val();
+                                                const updates = {};
+                                                for (let bookKey in booksData) {
+                                                    if (booksData[bookKey].bookName === bookName) {
+                                                        updates[bookKey] = null; // Silmek için null değeri atanır
+                                                    }
+                                                }
+                                                return update(booksRef, updates);
+                                            }
+                                        }).then(() => {
+                                            loadDataFromFirebase();
+                                        }).catch((error) => {
+                                            console.error("Kitap silme hatası:", error);
+                                        });
+
+                                        document.getElementById("new-book-name").value = "";
+                                    }).catch((error) => {
+                                        console.error("Kitap silme hatası:", error);
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+
+            // Kitap atama
+            assignBookButton.addEventListener("click", () => {
+                const selectedStudent = studentSelect.value;
+                const selectedBook = bookSelect.value;
+                if (!selectedStudent || !selectedBook) {
+                    alert("Lütfen öğrenci ve kitap seçin!");
+                    return;
+                }
+                const booksRef = ref(database, 'classes/' + classID + '/books');
+                get(booksRef).then((snapshot) => {
+                    let books = [];
+                    if (snapshot.exists()) {
+                        books = Object.values(snapshot.val());
+                    }
+                    const hasReadBefore = books.some(book => book.studentName === selectedStudent && book.bookName === selectedBook);
+                    if (hasReadBefore) {
+                        if (!confirm("Bu kitap daha önce okundu. Emin misiniz?")) {
+                            return;
+                        }
+                    }
+                    const borrowDate = new Date().toLocaleDateString('tr-TR');
+                    const newBookRef = push(booksRef);
+                    set(newBookRef, {
+                        studentName: selectedStudent,
+                        bookName: selectedBook,
+                        borrowDate: borrowDate,
+                        status: "okuyor"
+                    }).then(() => {
+                        console.log("Kitap başarıyla atandı.");
+                        loadDataFromFirebase();
+                    }).catch((error) => {
+                        console.error("Kitap atama hatası:", error);
+                    });
+                }).catch((error) => {
+                    console.error("Kitap kontrol hatası:", error);
+                });
+            });
+
+            // Kitap teslim et
+            booksTableBody.addEventListener("click", (e) => {
+                if (e.target.classList.contains("return-book") && !e.target.disabled) {
+                    const row = e.target.closest("tr");
+                    const studentName = row.children[0].textContent;
+                    const bookName = row.children[1].textContent;
+
+                    const booksRef = ref(database, 'classes/' + classID + '/books');
+                    get(booksRef).then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const booksData = snapshot.val();
+                            for (let key in booksData) {
+                                if (booksData[key].studentName === studentName && booksData[key].bookName === bookName && booksData[key].status === "okuyor") {
+                                    update(ref(database, `classes/${classID}/books/${key}`), { status: "tamamlandı" }).then(() => {
+                                        console.log("Kitap teslim edildi.");
+                                        loadDataFromFirebase();
+                                        // Butonun kaybolmaması için herhangi bir işlem yapılmadı
+                                    }).catch((error) => {
+                                        console.error("Kitap teslim etme hatası:", error);
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }).catch((error) => {
+                        console.error("Kitap teslim hatası:", error);
+                    });
+                }
+            });
+
+            // Öğrenci geçmişi listele
+            listHistoryButton.addEventListener("click", () => {
+                const selectedStudent = studentHistorySelect.value;
+                if (!selectedStudent) {
+                    alert("Lütfen bir öğrenci seçin!");
+                    return;
+                }
+                const booksRef = ref(database, 'classes/' + classID + '/books');
+                get(booksRef).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        const books = Object.values(snapshot.val()).filter(book => book.studentName === selectedStudent);
+                        readingHistoryBody.innerHTML = "";
+                        books.forEach(book => {
+                            const row = document.createElement("tr");
+                            row.innerHTML = `
+                                <td>${book.bookName}</td>
+                                <td>${book.borrowDate}</td>
+                                <td>${book.status === "tamamlandı" ? book.borrowDate : "-"}</td>
+                            `;
+                            readingHistoryBody.appendChild(row);
+                        });
+                        readingHistoryTable.style.display = "table";
+                        readingHistorySection.style.display = "block";
+                    } else {
+                        readingHistoryBody.innerHTML = "";
+                        readingHistoryTable.style.display = "none";
+                    }
+                }).catch((error) => {
+                    console.error("Veri yükleme hatası:", error);
+                });
+            });
+
+            // En iyiler
+            bestButton.addEventListener("click", () => {
+                if (bestSection.style.display === "block") {
+                    bestSection.style.display = "none";
+                } else {
+                    bestSection.style.display = "block";
+                    bestSection.innerHTML = "<h3>En İyiler</h3><table id='best-table'><thead><tr><th>Öğrenci Adı</th><th>Okunan Kitap Sayısı</th></tr></thead><tbody></tbody></table>";
+                    const bestTableBody = document.querySelector("#best-table tbody");
+                    const booksRef = ref(database, 'classes/' + classID + '/books');
+                    get(booksRef).then((snapshot) => {
+                        if (snapshot.exists()) {
+                            const books = Object.values(snapshot.val());
+                            const studentCounts = {};
+                            books.forEach(book => {
+                                if (book.studentName) {
+                                    studentCounts[book.studentName] = (studentCounts[book.studentName] || 0) + 1;
+                                }
+                            });
+                            const sortedStudents = Object.entries(studentCounts).sort((a, b) => b[1] - a[1]);
+                            bestTableBody.innerHTML = "";
+                            sortedStudents.forEach(([studentName, count], index) => {
+                                const row = document.createElement("tr");
+                                row.innerHTML = `<td>${studentName}</td><td>${count}</td>`;
+                                if (index < 3) {
+                                    row.classList.add("top-three");
+                                }
+                                bestTableBody.appendChild(row);
+                            });
+                        } else {
+                            bestTableBody.innerHTML = "";
+                        }
+                    }).catch((error) => {
+                        console.error("Veri yükleme hatası:", error);
+                    });
+                }
+            });
+
+            // Tarihçe butonu
+            historyButton.addEventListener("click", () => {
+                if (readingHistorySection.style.display === "block") {
+                    readingHistorySection.style.display = "none";
+                } else {
+                    readingHistorySection.style.display = "block";
+                }
+            });
+
+            // Kaydet butonu
+            saveButton.addEventListener("click", () => {
+                editSection.style.display = "none";
+                pinSection.style.display = "none";
+                isEditMode = false;
+                mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
+                loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
+                alert("Değişiklikler kaydedildi!");
+            });
+
+            // Sayfa yüklenince varsayılan sınıfın verilerini yükles
+            // İlk sınıf seçilmediği için kullanıcıdan sınıf seçmesini bekliyoruz
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>
+            Tersane İlkokulu Kitaplık Sistemi
+            <img src="https://cdn.pixabay.com/photo/2013/07/12/17/11/bookworm-151738_1280.png" alt="Kitap Kurdu">
+        </h1>
+    </header>
+    
+    <main>
+        <div style="text-align: center; margin-top: 20px;">
+            <label for="class-select">Sınıf Seçin:</label>
+            <select id="class-select">
+                <!-- Sınıflar Firebase üzerinden yüklenecek -->
+                <option value="">Sınıf Seçin</option>
+            </select>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <button id="edit-button">Düzenle</button>
+            <button id="best-button">En İyiler</button>
+            <button id="history-button">Öğrenci Kitap Geçmişi</button>
+        </div>
+
+        <section id="best-section" style="display: none; text-align: center; margin-top: 20px;">
+            <h3>En İyiler</h3>
+            <table id='best-table'>
+                <thead>
+                    <tr><th>Öğrenci Adı</th><th>Okunan Kitap Sayısı</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <section id="reading-history-section" style="display: none; text-align: center; margin-top: 20px;">
+            <h3>Öğrenci Kitap Geçmişi</h3>
+            <select id="student-history-select">
+                <option value="">Öğrenci Seçin</option>
+            </select>
+            <button id="list-history">Listele</button>
+            <table id="reading-history-table" style="display: none;">
+                <thead>
+                    <tr><th>Kitap İsmi</th><th>Alış Tarihi</th><th>Teslim Tarihi</th></tr>
+                </thead>
+                <tbody id="reading-history"></tbody>
+            </table>
+        </section>
+
+        <section id="book-list">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Öğrenci Adı</th>
+                        <th>Okuduğu Kitap İsmi</th>
+                        <th>Kitabı Aldığı Tarih</th>
+                        <th>Okuma Durumu</th>
+                        <th class="action-column">İşlemler</th> <!-- "İşlemler" sütunu -->
+                    </tr>
+                </thead>
+                <tbody id="books">
+                    <!-- Dinamik olarak kitap bilgileri burada yer alacak -->
+                </tbody>
+            </table>
+        </section>
+
+        <div id="pin-section" style="display: none;">
+            <label for="pin-input">PIN:</label>
+            <input type="password" id="pin-input"> <!-- maxlength kaldırıldı veya artırıldı -->
+            <button id="pin-submit">Onayla</button>
+        </div>
+        <div id="edit-section">
+            <h3>Öğrenci ve Kitap Yönetimi</h3>
+            <div id="student-book-management">
+                <div>
+                    <h4>Öğrenci Ekle</h4>
+                    <input type="text" id="new-student-name" placeholder="Öğrenci Adı">
+                    <button id="add-student">Ekle</button>
+                    <button id="delete-student" class="delete-button">Sil</button>
+                </div>
+                <div>
+                    <h4>Kitap Ekle</h4>
+                    <input type="text" id="new-book-name" placeholder="Kitap Adı">
+                    <button id="add-book">Ekle</button>
+                    <button id="delete-book" class="delete-button">Sil</button>
+                </div>
+                <div style="margin-top: 2em;">
+                    <h4>Kitap Atama</h4>
+                    <select id="student-select">
+                        <option value="">Öğrenci Seçin</option>
+                    </select>
+                    <select id="book-select">
+                        <option value="">Kitap Seçin</option>
+                    </select>
+                    <button id="assign-book">Ata</button>
+                </div>
+            </div>
+            <button id="save-button">Kaydet</button>
+        </div>
+    </main>
+</body>
+</html>
