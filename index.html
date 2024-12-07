@@ -145,6 +145,61 @@
         .edit-mode .action-cell {
             display: table-cell;
         }
+
+        /* Modal Styles */
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+
+        #modal-content p {
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+
+        #modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        #modal-buttons button {
+            padding: 10px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #modal-buttons .ok-btn {
+            background-color: #0078d7;
+            color: white;
+        }
+
+        #modal-buttons .cancel-btn {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        #modal-buttons .confirm-btn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #modal-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            font-size: 1em;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-app.js";
@@ -195,6 +250,57 @@
             const deleteBookButton = document.getElementById("delete-book");
             const assignBookButton = document.getElementById("assign-book");
 
+            // Modal Elements
+            const modal = document.getElementById("modal");
+            const modalMessage = document.getElementById("modal-message");
+            const modalButtons = document.getElementById("modal-buttons");
+            const modalInput = document.getElementById("modal-input");
+            const okBtn = document.querySelector(".ok-btn");
+            const cancelBtn = document.querySelector(".cancel-btn");
+            const confirmBtn = document.querySelector(".confirm-btn");
+
+            // Function to show alert modal
+            function showAlert(message) {
+                return new Promise((resolve) => {
+                    modalMessage.textContent = message;
+                    modalInput.style.display = "none";
+                    cancelBtn.style.display = "none";
+                    confirmBtn.style.display = "none";
+                    okBtn.style.display = "inline-block";
+                    okBtn.textContent = "Tamam";
+                    modal.showModal();
+
+                    okBtn.onclick = () => {
+                        modal.close();
+                        resolve();
+                    };
+                });
+            }
+
+            // Function to show confirm modal
+            function showConfirm(message) {
+                return new Promise((resolve) => {
+                    modalMessage.textContent = message;
+                    modalInput.style.display = "none";
+                    cancelBtn.style.display = "inline-block";
+                    confirmBtn.style.display = "none";
+                    okBtn.style.display = "inline-block";
+                    okBtn.textContent = "Evet";
+                    cancelBtn.textContent = "Hayır";
+                    modal.showModal();
+
+                    okBtn.onclick = () => {
+                        modal.close();
+                        resolve(true);
+                    };
+
+                    cancelBtn.onclick = () => {
+                        modal.close();
+                        resolve(false);
+                    };
+                });
+            }
+
             // Sınıfları dinamik olarak yükle ve class-select dropdown'una ekle
             function loadClassesDropdown() {
                 const classesRef = ref(database, 'classes');
@@ -209,7 +315,7 @@
                             classSelect.appendChild(option);
                         }
                     } else {
-                        classSelect.innerHTML += '<option value="">Hiç sınıf yok</option>';
+                        showAlert("Hiç sınıf yok");
                     }
                 });
             }
@@ -217,12 +323,12 @@
             loadClassesDropdown(); // Sayfa yüklendiğinde sınıfları yükle
 
             // Sınıf seçildiğinde
-            classSelect.addEventListener("change", () => {
+            classSelect.addEventListener("change", async () => {
                 classID = classSelect.value;
                 if (classID) {
                     clearUI();
                     closeEditMode();
-                    loadAllData();
+                    await loadAllData();
                 } else {
                     clearUI();
                     closeEditMode();
@@ -240,10 +346,10 @@
                 readingHistorySection.style.display = "none";
             }
 
-            function loadAllData() {
-                loadDataFromFirebase();
-                loadStudents();
-                loadBooksList();
+            async function loadAllData() {
+                await loadDataFromFirebase();
+                await loadStudents();
+                await loadBooksList();
             }
 
             // Düzenleme modunu kapatma fonksiyonu
@@ -257,9 +363,10 @@
             }
 
             // Kitap atamaları (books) verisini yükler
-            function loadDataFromFirebase() {
+            async function loadDataFromFirebase() {
                 const classRef = ref(database, 'classes/' + classID + '/books');
-                get(classRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(classRef);
                     if (snapshot.exists()) {
                         let books = Object.values(snapshot.val());
                         // Öncelikle okuyor durumuna göre sıralama
@@ -281,18 +388,22 @@
                             `;
                             booksTableBody.appendChild(row);
                         });
+                        updateReturnButtons();
                     } else {
                         booksTableBody.innerHTML = "";
+                        updateReturnButtons();
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.error("Veri yükleme hatası:", error);
-                });
+                    await showAlert("Veri yükleme hatası: " + error.message);
+                }
             }
 
             // Tüm öğrencileri yükler ve Türkçe alfabetik sıralar
-            function loadStudents() {
+            async function loadStudents() {
                 const studentsRef = ref(database, 'classes/' + classID + '/students');
-                get(studentsRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(studentsRef);
                     if (snapshot.exists()) {
                         let students = Object.values(snapshot.val());
                         // Öğrencileri Türkçe alfabe sırasına göre sıralama
@@ -316,15 +427,17 @@
                             }
                         });
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.error("Öğrenci yükleme hatası:", error);
-                });
+                    await showAlert("Öğrenci yükleme hatası: " + error.message);
+                }
             }
 
             // Tüm kitapları yükler ve Türkçe alfabetik sıralar
-            function loadBooksList() {
+            async function loadBooksList() {
                 const booksListRef = ref(database, 'classes/' + classID + '/booksList');
-                get(booksListRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(booksListRef);
                     if (snapshot.exists()) {
                         let booksList = Object.values(snapshot.val());
                         // Kitapları Türkçe alfabe sırasına göre sıralama
@@ -341,9 +454,10 @@
                             }
                         });
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.error("Kitap listesi yükleme hatası:", error);
-                });
+                    await showAlert("Kitap listesi yükleme hatası: " + error.message);
+                }
             }
 
             // "Teslim Et" butonlarının durumunu günceller
@@ -352,9 +466,7 @@
                 returnButtons.forEach(button => {
                     if (isEditMode && button.textContent === "Teslim Et") {
                         button.disabled = false;
-                    } else if (button.textContent === "Teslim Edildi") {
-                        button.disabled = true;
-                    } else {
+                    } else if (button.textContent === "Teslim Et") { // Considering "Teslim Edildi" is not present
                         button.disabled = true;
                     }
                 });
@@ -367,16 +479,18 @@
                 isEditMode = false;
                 mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
                 updateReturnButtons();
+                pinInput.value = "";
             });
 
-            pinSubmit.addEventListener("click", () => {
+            pinSubmit.addEventListener("click", async () => {
                 const enteredPin = pinInput.value;
                 if (!classID) {
-                    alert("Lütfen bir sınıf seçin.");
+                    await showAlert("Lütfen bir sınıf seçin.");
                     return;
                 }
                 const classPinRef = ref(database, 'classes/' + classID + '/pin');
-                get(classPinRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(classPinRef);
                     if (snapshot.exists()) {
                         const correctPin = snapshot.val();
                         if (enteredPin === correctPin) {
@@ -384,26 +498,28 @@
                             editSection.style.display = "block";
                             isEditMode = true;
                             mainElement.classList.add("edit-mode"); // 'edit-mode' sınıfını ekle
-                            loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
+                            await loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
                         } else {
-                            alert("Yanlış PIN!");
+                            await showAlert("Yanlış PIN!");
                         }
                     } else {
-                        alert("Bu sınıf için PIN tanımlı değil.");
+                        await showAlert("Bu sınıf için PIN tanımlı değil.");
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.error("PIN doğrulama hatası:", error);
-                });
+                    await showAlert("PIN doğrulama hatası: " + error.message);
+                }
             });
 
             // Öğrenci ekle
-            addStudentButton.addEventListener("click", () => {
+            addStudentButton.addEventListener("click", async () => {
                 const studentName = document.getElementById("new-student-name").value.trim();
                 if (studentName) {
                     const newStudentRef = push(ref(database, 'classes/' + classID + '/students'));
-                    set(newStudentRef, {
-                        studentName: studentName
-                    }).then(() => {
+                    try {
+                        await set(newStudentRef, {
+                            studentName: studentName
+                        });
                         console.log("Öğrenci başarıyla kaydedildi.");
                         const option = document.createElement("option");
                         option.value = studentName;
@@ -415,227 +531,255 @@
                         historyOption.textContent = studentName;
                         studentHistorySelect.appendChild(historyOption);
 
-                        loadDataFromFirebase();
-                        loadStudents();
+                        await loadDataFromFirebase();
+                        await loadStudents();
                         document.getElementById("new-student-name").value = "";
-                    }).catch((error) => {
+                    } catch (error) {
                         console.error("Öğrenci kaydetme hatası:", error);
-                    });
+                        await showAlert("Öğrenci kaydetme hatası: " + error.message);
+                    }
                 } else {
-                    alert("Lütfen bir öğrenci adı girin!");
+                    await showAlert("Lütfen bir öğrenci adı girin!");
                 }
             });
 
             // Öğrenci sil
-            deleteStudentButton.addEventListener("click", () => {
+            deleteStudentButton.addEventListener("click", async () => {
                 const studentName = document.getElementById("new-student-name").value.trim();
                 if (!studentName) {
-                    alert("Lütfen bir öğrenci adı girin!");
+                    await showAlert("Lütfen bir öğrenci adı girin!");
                     return;
                 }
 
-                if (confirm("Bu öğrenciyi silmek istediğinize emin misiniz?")) {
-                    const studentsRef = ref(database, 'classes/' + classID + '/students');
-                    get(studentsRef).then((snapshot) => {
-                        if (snapshot.exists()) {
-                            const studentsData = snapshot.val();
-                            for (let key in studentsData) {
-                                if (studentsData[key].studentName === studentName) {
-                                    remove(ref(database, 'classes/' + classID + '/students/' + key)).then(() => {
-                                        console.log("Öğrenci başarıyla silindi.");
-                                        const studentIndex = Array.from(studentSelect.options).findIndex(option => option.value === studentName);
-                                        if (studentIndex > -1) {
-                                            studentSelect.remove(studentIndex);
-                                        }
+                const confirmDelete = await showConfirm("Bu öğrenciyi silmek istediğinize emin misiniz?");
+                if (!confirmDelete) {
+                    return;
+                }
 
-                                        const historyIndex = Array.from(studentHistorySelect.options).findIndex(option => option.value === studentName);
-                                        if (historyIndex > -1) {
-                                            studentHistorySelect.remove(historyIndex);
-                                        }
-
-                                        const booksRef = ref(database, 'classes/' + classID + '/books');
-                                        get(booksRef).then((booksSnapshot) => {
-                                            if (booksSnapshot.exists()) {
-                                                const booksData = booksSnapshot.val();
-                                                const updates = {};
-                                                for (let bookKey in booksData) {
-                                                    if (booksData[bookKey].studentName === studentName) {
-                                                        updates[bookKey] = null; // Silmek için null değeri atanır
-                                                    }
-                                                }
-                                                return update(booksRef, updates);
-                                            }
-                                        }).then(() => {
-                                            loadDataFromFirebase();
-                                        }).catch((error) => {
-                                            console.error("Kitap silme hatası:", error);
-                                        });
-
-                                        document.getElementById("new-student-name").value = "";
-                                    }).catch((error) => {
-                                        console.error("Öğrenci silme hatası:", error);
-                                    });
-                                    break;
-                                }
+                const studentsRef = ref(database, 'classes/' + classID + '/students');
+                try {
+                    const snapshot = await get(studentsRef);
+                    if (snapshot.exists()) {
+                        const studentsData = snapshot.val();
+                        let studentKeyToRemove = null;
+                        for (let key in studentsData) {
+                            if (studentsData[key].studentName === studentName) {
+                                studentKeyToRemove = key;
+                                break;
                             }
                         }
-                    });
+
+                        if (studentKeyToRemove) {
+                            await remove(ref(database, 'classes/' + classID + '/students/' + studentKeyToRemove));
+                            console.log("Öğrenci başarıyla silindi.");
+
+                            const studentIndex = Array.from(studentSelect.options).findIndex(option => option.value === studentName);
+                            if (studentIndex > -1) {
+                                studentSelect.remove(studentIndex);
+                            }
+
+                            const historyIndex = Array.from(studentHistorySelect.options).findIndex(option => option.value === studentName);
+                            if (historyIndex > -1) {
+                                studentHistorySelect.remove(historyIndex);
+                            }
+
+                            const booksRef = ref(database, 'classes/' + classID + '/books');
+                            const booksSnapshot = await get(booksRef);
+                            if (booksSnapshot.exists()) {
+                                const booksData = booksSnapshot.val();
+                                const updates = {};
+                                for (let bookKey in booksData) {
+                                    if (booksData[key].studentName === studentName) {
+                                        updates[bookKey] = null; // Silmek için null değeri atanır
+                                    }
+                                }
+                                await update(booksRef, updates);
+                            }
+
+                            await loadDataFromFirebase();
+                            await loadStudents();
+                            document.getElementById("new-student-name").value = "";
+                        } else {
+                            await showAlert("Öğrenci bulunamadı.");
+                        }
+                    }
+                } catch (error) {
+                    console.error("Öğrenci silme hatası:", error);
+                    await showAlert("Öğrenci silme hatası: " + error.message);
                 }
             });
 
             // Kitap ekle
-            addBookButton.addEventListener("click", () => {
+            addBookButton.addEventListener("click", async () => {
                 const bookName = document.getElementById("new-book-name").value.trim();
                 if (bookName) {
                     const newBookRef = push(ref(database, 'classes/' + classID + '/booksList'));
-                    set(newBookRef, {
-                        bookName: bookName
-                    }).then(() => {
+                    try {
+                        await set(newBookRef, {
+                            bookName: bookName
+                        });
                         console.log("Kitap başarıyla kaydedildi.");
                         const option = document.createElement("option");
                         option.value = bookName;
                         option.textContent = bookName;
                         bookSelect.appendChild(option);
 
-                        loadBooksList();
+                        await loadBooksList();
                         document.getElementById("new-book-name").value = "";
-                    }).catch((error) => {
+                    } catch (error) {
                         console.error("Kitap kaydetme hatası:", error);
-                    });
+                        await showAlert("Kitap kaydetme hatası: " + error.message);
+                    }
                 } else {
-                    alert("Lütfen bir kitap adı girin!");
+                    await showAlert("Lütfen bir kitap adı girin!");
                 }
             });
 
             // Kitap sil
-            deleteBookButton.addEventListener("click", () => {
+            deleteBookButton.addEventListener("click", async () => {
                 const bookName = document.getElementById("new-book-name").value.trim();
                 if (!bookName) {
-                    alert("Lütfen bir kitap adı girin!");
+                    await showAlert("Lütfen bir kitap adı girin!");
                     return;
                 }
 
-                if (confirm("Bu kitabı silmek istediğinize emin misiniz?")) {
-                    const booksListRef = ref(database, 'classes/' + classID + '/booksList');
-                    get(booksListRef).then((snapshot) => {
-                        if (snapshot.exists()) {
-                            const booksListData = snapshot.val();
-                            for (let key in booksListData) {
-                                if (booksListData[key].bookName === bookName) {
-                                    remove(ref(database, 'classes/' + classID + '/booksList/' + key)).then(() => {
-                                        console.log("Kitap başarıyla silindi.");
-                                        const bookIndex = Array.from(bookSelect.options).findIndex(option => option.value === bookName);
-                                        if (bookIndex > -1) {
-                                            bookSelect.remove(bookIndex);
-                                        }
+                const confirmDelete = await showConfirm("Bu kitabı silmek istediğinize emin misiniz?");
+                if (!confirmDelete) {
+                    return;
+                }
 
-                                        const booksRef = ref(database, 'classes/' + classID + '/books');
-                                        get(booksRef).then((booksSnapshot) => {
-                                            if (booksSnapshot.exists()) {
-                                                const booksData = booksSnapshot.val();
-                                                const updates = {};
-                                                for (let bookKey in booksData) {
-                                                    if (booksData[bookKey].bookName === bookName) {
-                                                        updates[bookKey] = null; // Silmek için null değeri atanır
-                                                    }
-                                                }
-                                                return update(booksRef, updates);
-                                            }
-                                        }).then(() => {
-                                            loadDataFromFirebase();
-                                        }).catch((error) => {
-                                            console.error("Kitap silme hatası:", error);
-                                        });
-
-                                        document.getElementById("new-book-name").value = "";
-                                    }).catch((error) => {
-                                        console.error("Kitap silme hatası:", error);
-                                    });
-                                    break;
-                                }
+                const booksListRef = ref(database, 'classes/' + classID + '/booksList');
+                try {
+                    const snapshot = await get(booksListRef);
+                    if (snapshot.exists()) {
+                        const booksListData = snapshot.val();
+                        let bookKeyToRemove = null;
+                        for (let key in booksListData) {
+                            if (booksListData[key].bookName === bookName) {
+                                bookKeyToRemove = key;
+                                break;
                             }
                         }
-                    });
+
+                        if (bookKeyToRemove) {
+                            await remove(ref(database, 'classes/' + classID + '/booksList/' + bookKeyToRemove));
+                            console.log("Kitap başarıyla silindi.");
+
+                            const bookIndex = Array.from(bookSelect.options).findIndex(option => option.value === bookName);
+                            if (bookIndex > -1) {
+                                bookSelect.remove(bookIndex);
+                            }
+
+                            const booksRef = ref(database, 'classes/' + classID + '/books');
+                            const booksSnapshot = await get(booksRef);
+                            if (booksSnapshot.exists()) {
+                                const booksData = booksSnapshot.val();
+                                const updates = {};
+                                for (let bookKey in booksData) {
+                                    if (booksData[bookKey].bookName === bookName) {
+                                        updates[bookKey] = null; // Silmek için null değeri atanır
+                                    }
+                                }
+                                await update(booksRef, updates);
+                            }
+
+                            await loadDataFromFirebase();
+                            await loadBooksList();
+                            document.getElementById("new-book-name").value = "";
+                        } else {
+                            await showAlert("Kitap bulunamadı.");
+                        }
+                    }
+                } catch (error) {
+                    console.error("Kitap silme hatası:", error);
+                    await showAlert("Kitap silme hatası: " + error.message);
                 }
             });
 
             // Kitap atama
-            assignBookButton.addEventListener("click", () => {
+            assignBookButton.addEventListener("click", async () => {
                 const selectedStudent = studentSelect.value;
                 const selectedBook = bookSelect.value;
                 if (!selectedStudent || !selectedBook) {
-                    alert("Lütfen öğrenci ve kitap seçin!");
+                    await showAlert("Lütfen öğrenci ve kitap seçin!");
                     return;
                 }
                 const booksRef = ref(database, 'classes/' + classID + '/books');
-                get(booksRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(booksRef);
                     let books = [];
                     if (snapshot.exists()) {
                         books = Object.values(snapshot.val());
                     }
                     const hasReadBefore = books.some(book => book.studentName === selectedStudent && book.bookName === selectedBook);
                     if (hasReadBefore) {
-                        if (!confirm("Bu kitap daha önce okundu. Emin misiniz?")) {
+                        const confirmAssign = await showConfirm("Bu kitap daha önce okundu. Emin misiniz?");
+                        if (!confirmAssign) {
                             return;
                         }
                     }
                     const borrowDate = new Date().toLocaleDateString('tr-TR');
                     const newBookRef = push(booksRef);
-                    set(newBookRef, {
+                    await set(newBookRef, {
                         studentName: selectedStudent,
                         bookName: selectedBook,
                         borrowDate: borrowDate,
                         status: "okuyor"
-                    }).then(() => {
-                        console.log("Kitap başarıyla atandı.");
-                        loadDataFromFirebase();
-                    }).catch((error) => {
-                        console.error("Kitap atama hatası:", error);
                     });
-                }).catch((error) => {
-                    console.error("Kitap kontrol hatası:", error);
-                });
+                    console.log("Kitap başarıyla atandı.");
+                    await loadDataFromFirebase();
+                } catch (error) {
+                    console.error("Kitap atama hatası:", error);
+                    await showAlert("Kitap atama hatası: " + error.message);
+                }
             });
 
             // Kitap teslim et
-            booksTableBody.addEventListener("click", (e) => {
+            booksTableBody.addEventListener("click", async (e) => {
                 if (e.target.classList.contains("return-book") && !e.target.disabled) {
                     const row = e.target.closest("tr");
                     const studentName = row.children[0].textContent;
                     const bookName = row.children[1].textContent;
 
                     const booksRef = ref(database, 'classes/' + classID + '/books');
-                    get(booksRef).then((snapshot) => {
+                    try {
+                        const snapshot = await get(booksRef);
                         if (snapshot.exists()) {
                             const booksData = snapshot.val();
+                            let bookKeyToUpdate = null;
                             for (let key in booksData) {
                                 if (booksData[key].studentName === studentName && booksData[key].bookName === bookName && booksData[key].status === "okuyor") {
-                                    update(ref(database, `classes/${classID}/books/${key}`), { status: "tamamlandı" }).then(() => {
-                                        console.log("Kitap teslim edildi.");
-                                        loadDataFromFirebase();
-                                        // Butonun kaybolmaması için herhangi bir işlem yapılmadı
-                                    }).catch((error) => {
-                                        console.error("Kitap teslim etme hatası:", error);
-                                    });
+                                    bookKeyToUpdate = key;
                                     break;
                                 }
                             }
+
+                            if (bookKeyToUpdate) {
+                                await update(ref(database, `classes/${classID}/books/${bookKeyToUpdate}`), { status: "tamamlandı" });
+                                console.log("Kitap teslim edildi.");
+                                await loadDataFromFirebase();
+                                // Butonun kaybolmaması için herhangi bir işlem yapılmadı
+                            } else {
+                                await showAlert("Kitap bulunamadı veya zaten teslim edilmiş.");
+                            }
                         }
-                    }).catch((error) => {
-                        console.error("Kitap teslim hatası:", error);
-                    });
+                    } catch (error) {
+                        console.error("Kitap teslim etme hatası:", error);
+                        await showAlert("Kitap teslim etme hatası: " + error.message);
+                    }
                 }
             });
 
             // Öğrenci geçmişi listele
-            listHistoryButton.addEventListener("click", () => {
+            listHistoryButton.addEventListener("click", async () => {
                 const selectedStudent = studentHistorySelect.value;
                 if (!selectedStudent) {
-                    alert("Lütfen bir öğrenci seçin!");
+                    await showAlert("Lütfen bir öğrenci seçin!");
                     return;
                 }
                 const booksRef = ref(database, 'classes/' + classID + '/books');
-                get(booksRef).then((snapshot) => {
+                try {
+                    const snapshot = await get(booksRef);
                     if (snapshot.exists()) {
                         const books = Object.values(snapshot.val()).filter(book => book.studentName === selectedStudent);
                         readingHistoryBody.innerHTML = "";
@@ -653,14 +797,17 @@
                     } else {
                         readingHistoryBody.innerHTML = "";
                         readingHistoryTable.style.display = "none";
+                        readingHistorySection.style.display = "block"; // Show section even if no data
+                        await showAlert("Seçilen öğrencinin geçmişi bulunmamaktadır.");
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.error("Veri yükleme hatası:", error);
-                });
+                    await showAlert("Veri yükleme hatası: " + error.message);
+                }
             });
 
             // En iyiler
-            bestButton.addEventListener("click", () => {
+            bestButton.addEventListener("click", async () => {
                 if (bestSection.style.display === "block") {
                     bestSection.style.display = "none";
                 } else {
@@ -668,7 +815,8 @@
                     bestSection.innerHTML = "<h3>En İyiler</h3><table id='best-table'><thead><tr><th>Öğrenci Adı</th><th>Okunan Kitap Sayısı</th></tr></thead><tbody></tbody></table>";
                     const bestTableBody = document.querySelector("#best-table tbody");
                     const booksRef = ref(database, 'classes/' + classID + '/books');
-                    get(booksRef).then((snapshot) => {
+                    try {
+                        const snapshot = await get(booksRef);
                         if (snapshot.exists()) {
                             const books = Object.values(snapshot.val());
                             const studentCounts = {};
@@ -688,11 +836,12 @@
                                 bestTableBody.appendChild(row);
                             });
                         } else {
-                            bestTableBody.innerHTML = "";
+                            bestTableBody.innerHTML = "<tr><td colspan='2'>Veri bulunmamaktadır.</td></tr>";
                         }
-                    }).catch((error) => {
+                    } catch (error) {
                         console.error("Veri yükleme hatası:", error);
-                    });
+                        await showAlert("Veri yükleme hatası: " + error.message);
+                    }
                 }
             });
 
@@ -706,13 +855,13 @@
             });
 
             // Kaydet butonu
-            saveButton.addEventListener("click", () => {
+            saveButton.addEventListener("click", async () => {
                 editSection.style.display = "none";
                 pinSection.style.display = "none";
                 isEditMode = false;
                 mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
-                loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
-                alert("Değişiklikler kaydedildi!");
+                await loadDataFromFirebase(); // Butonları güncellemek için verileri tekrar yükle
+                await showAlert("Değişiklikler kaydedildi!");
             });
 
             // Sayfa yüklenince varsayılan sınıfın verilerini yükles
@@ -818,5 +967,18 @@
             <button id="save-button">Kaydet</button>
         </div>
     </main>
+
+    <!-- Modal Dialog -->
+    <dialog id="modal">
+        <div id="modal-content">
+            <p id="modal-message"></p>
+            <input type="text" id="modal-input" />
+            <div id="modal-buttons">
+                <button class="ok-btn">Tamam</button>
+                <button class="cancel-btn" style="display: none;">İptal</button>
+                <button class="confirm-btn" style="display: none;">Onayla</button>
+            </div>
+        </div>
+    </dialog>
 </body>
 </html>
