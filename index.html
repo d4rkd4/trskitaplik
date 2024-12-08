@@ -10,6 +10,8 @@
         body {
             font-family: 'Roboto', sans-serif;
             background-color: #f0f8ff;
+            margin: 0;
+            padding: 0;
         }
         header {
             text-align: center;
@@ -26,25 +28,30 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            font-size: 2em;
         }
         header img {
             width: 100px;
             height: 100px;
             position: absolute;
             right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
         }
-        #edit-button, #save-button, #pin-submit, #add-student, #delete-student, #add-book, #delete-book, #assign-book, #list-history, #best-button, #history-button {
+        button {
             background-color: #007bb5;
             color: white;
             border: none;
             padding: 10px 20px;
             border-radius: 6px;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: background-color 0.3s, transform 0.2s;
             margin: 10px;
+            font-size: 1em;
         }
-        #edit-button:hover, #save-button:hover, #pin-submit:hover, #add-student:hover, #delete-student:hover, #add-book:hover, #delete-book:hover, #assign-book:hover, #list-history:hover, #best-button:hover, #history-button:hover {
+        button:hover {
             background-color: #005f8c;
+            transform: scale(1.05);
         }
         #delete-student, #delete-book {
             background-color: #d9534f;
@@ -63,27 +70,34 @@
             margin: 20px auto;
             border-collapse: collapse;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            border-radius: 10px;
+            overflow: hidden;
         }
         th, td {
             border: 1px solid #ddd;
             padding: 12px;
             text-align: center;
+            transition: background-color 0.3s;
         }
         th {
             background-color: #007bb5;
             color: white;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
         tr:nth-child(even) {
-            background-color: #f2f2f2;
+            background-color: #f9f9f9;
         }
         tr:hover {
-            background-color: #ddd;
+            background-color: #f1f1f1;
         }
         .ongoing td {
-            color: red;
+            color: #ff4500;
         }
         .completed td {
-            color: green;
+            color: #28a745;
         }
         #pin-section, #edit-section {
             text-align: center;
@@ -105,17 +119,21 @@
             border-radius: 6px;
             border: 1px solid #ddd;
             width: calc(50% - 140px);
+            margin-right: 10px;
         }
         #reading-history-section, #best-section {
             text-align: center;
             margin: 20px auto;
-            width: 60%;
+            width: 80%;
         }
         #reading-history-table, #best-table {
             width: 100%;
             margin-top: 20px;
             border-collapse: collapse;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            border-radius: 10px;
+            overflow: hidden;
         }
         .top-three {
             font-weight: bold;
@@ -200,6 +218,36 @@
             border-radius: 5px;
             display: none;
         }
+
+        /* Yeni Stil Eklemeleri */
+        .return-book {
+            background-color: #ff6347; /* Kırmızı */
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+        .return-book:hover {
+            background-color: #ff4500; /* Daha koyu kırmızı */
+            transform: scale(1.05);
+        }
+        .return-book:disabled {
+            background-color: #28a745; /* Yeşil */
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Teslim Edildi butonu için özel stil */
+        .return-book.completed {
+            background-color: #28a745; /* Yeşil */
+            cursor: default;
+        }
+        .return-book.completed:hover {
+            background-color: #28a745;
+            transform: none;
+        }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-app.js";
@@ -258,6 +306,21 @@
             const okBtn = document.querySelector(".ok-btn");
             const cancelBtn = document.querySelector(".cancel-btn");
             const confirmBtn = document.querySelector(".confirm-btn");
+
+            // Helper function to parse "dd.MM.yyyy" to Date object
+            function parseDate(dateStr) {
+                if (!dateStr) return new Date(0); // Return a very old date if undefined
+                const [day, month, year] = dateStr.split('.');
+                return new Date(`${year}-${month}-${day}`); // ISO format for consistency
+            }
+
+            // Function to format Date object to "dd.MM.yyyy"
+            function formatDate(date) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
 
             // Function to show alert modal
             function showAlert(message) {
@@ -364,26 +427,52 @@
 
             // Kitap atamaları (books) verisini yükler
             async function loadDataFromFirebase() {
-                const classRef = ref(database, 'classes/' + classID + '/books');
+                const booksRef = ref(database, 'classes/' + classID + '/books');
                 try {
-                    const snapshot = await get(classRef);
+                    const snapshot = await get(booksRef);
                     if (snapshot.exists()) {
                         let books = Object.values(snapshot.val());
-                        // Öncelikle okuyor durumuna göre sıralama
-                        books.sort((a, b) => a.status === 'okuyor' && b.status !== 'okuyor' ? -1 : 1);
+
+                        // Sıralama: önce 'okuyor' durumundakiler en üstte, 'tamamlandı' durumundakiler aşağıda
+                        books.sort((a, b) => {
+                            if (a.status === b.status) {
+                                if (a.status === 'okuyor') {
+                                    // 'okuyor' durumunda, en son başlayan en üstte
+                                    return parseDate(b.borrowDate) - parseDate(a.borrowDate);
+                                } else {
+                                    // 'tamamlandı' durumunda, en son teslim eden en üstte
+                                    return parseDate(b.returnDate) - parseDate(a.returnDate);
+                                }
+                            } else {
+                                return a.status === 'okuyor' ? -1 : 1;
+                            }
+                        });
+
                         // En fazla 50 satır gözüksün
                         books = books.slice(0, 50);
                         booksTableBody.innerHTML = "";
                         books.forEach(book => {
                             const row = document.createElement("tr");
                             row.className = book.status === "okuyor" ? "ongoing" : "completed";
+
+                            // Butonun durumuna göre sınıf ekleyerek renklerini belirleyelim
+                            let buttonClass = "return-book";
+                            let buttonText = "Teslim Et";
+                            let buttonDisabled = !isEditMode || book.status !== "okuyor";
+
+                            if (book.status === "tamamlandı") {
+                                buttonClass += " completed";
+                                buttonText = "Teslim Edildi";
+                                buttonDisabled = true;
+                            }
+
                             row.innerHTML = `
                                 <td>${book.studentName}</td>
                                 <td>${book.bookName}</td>
                                 <td>${book.borrowDate}</td>
-                                <td>${book.status}</td>
+                                <td>${book.status === "okuyor" ? "Okuyor" : (book.returnDate ? book.returnDate : "Tamamlandı")}</td>
                                 <td class="action-cell">
-                                    <button class="return-book" ${!isEditMode || book.status !== "okuyor" ? 'disabled' : ''}>Teslim Et</button>
+                                    <button class="${buttonClass}" ${buttonDisabled ? 'disabled' : ''}>${buttonText}</button>
                                 </td>
                             `;
                             booksTableBody.appendChild(row);
@@ -464,10 +553,16 @@
             function updateReturnButtons() {
                 const returnButtons = document.querySelectorAll(".return-book");
                 returnButtons.forEach(button => {
-                    if (isEditMode && button.textContent === "Teslim Et") {
-                        button.disabled = false;
-                    } else if (button.textContent === "Teslim Et") { // Considering "Teslim Edildi" is not present
+                    if (button.classList.contains("completed")) {
+                        // Teslim edilmiş kitaplar için buton zaten yeşil ve disabled
                         button.disabled = true;
+                    } else {
+                        // Teslim edilmemiş kitaplar için butonun durumu edit moduna bağlı
+                        if (isEditMode) {
+                            button.disabled = false;
+                        } else {
+                            button.disabled = true;
+                        }
                     }
                 });
             }
@@ -589,7 +684,7 @@
                                 const booksData = booksSnapshot.val();
                                 const updates = {};
                                 for (let bookKey in booksData) {
-                                    if (booksData[key].studentName === studentName) {
+                                    if (booksData[bookKey].studentName === studentName) {
                                         updates[bookKey] = null; // Silmek için null değeri atanır
                                     }
                                 }
@@ -718,7 +813,7 @@
                             return;
                         }
                     }
-                    const borrowDate = new Date().toLocaleDateString('tr-TR');
+                    const borrowDate = formatDate(new Date());
                     const newBookRef = push(booksRef);
                     await set(newBookRef, {
                         studentName: selectedStudent,
@@ -736,7 +831,7 @@
 
             // Kitap teslim et
             booksTableBody.addEventListener("click", async (e) => {
-                if (e.target.classList.contains("return-book") && !e.target.disabled) {
+                if (e.target.classList.contains("return-book") && !e.target.disabled && !e.target.classList.contains("completed")) {
                     const row = e.target.closest("tr");
                     const studentName = row.children[0].textContent;
                     const bookName = row.children[1].textContent;
@@ -755,10 +850,13 @@
                             }
 
                             if (bookKeyToUpdate) {
-                                await update(ref(database, `classes/${classID}/books/${bookKeyToUpdate}`), { status: "tamamlandı" });
+                                const returnDate = formatDate(new Date());
+                                await update(ref(database, `classes/${classID}/books/${bookKeyToUpdate}`), { 
+                                    status: "tamamlandı",
+                                    returnDate: returnDate
+                                });
                                 console.log("Kitap teslim edildi.");
                                 await loadDataFromFirebase();
-                                // Butonun kaybolmaması için herhangi bir işlem yapılmadı
                             } else {
                                 await showAlert("Kitap bulunamadı veya zaten teslim edilmiş.");
                             }
@@ -782,13 +880,19 @@
                     const snapshot = await get(booksRef);
                     if (snapshot.exists()) {
                         const books = Object.values(snapshot.val()).filter(book => book.studentName === selectedStudent);
+                        // Teslim tarihine göre sıralama
+                        books.sort((a, b) => {
+                            const dateA = a.returnDate ? parseDate(a.returnDate) : new Date(0);
+                            const dateB = b.returnDate ? parseDate(b.returnDate) : new Date(0);
+                            return dateB - dateA;
+                        });
                         readingHistoryBody.innerHTML = "";
                         books.forEach(book => {
                             const row = document.createElement("tr");
                             row.innerHTML = `
                                 <td>${book.bookName}</td>
                                 <td>${book.borrowDate}</td>
-                                <td>${book.status === "tamamlandı" ? book.borrowDate : "-"}</td>
+                                <td>${book.status === "tamamlandı" ? book.returnDate : "-"}</td>
                             `;
                             readingHistoryBody.appendChild(row);
                         });
