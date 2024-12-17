@@ -1,12 +1,13 @@
 <!DOCTYPE html>
+
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Çok Sınıflı Kitaplık Yönetimi</title>
-    <!-- Roboto fontu için Google Fonts linki -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
-    <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Çok Sınıflı Kitaplık Yönetimi</title>
+<!-- Roboto fontu için Google Fonts linki -->
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<style>
         body {
             font-family: 'Roboto', sans-serif;
             background-color: #f0f8ff;
@@ -248,8 +249,25 @@
             background-color: #28a745;
             transform: none;
         }
+
+        /* Silme Butonu Stili */
+        .delete-assignment {
+            background-color: #dc3545; /* Kırmızı */
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            font-size: 0.9em;
+        }
+
+        .delete-assignment:hover {
+            background-color: #c82333; /* Daha koyu kırmızı */
+            transform: scale(1.1);
+        }
     </style>
-    <script type="module">
+<script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-app.js";
         import { getDatabase, ref, set, get, child, push, remove, update, onValue } from "https://www.gstatic.com/firebasejs/9.1.3/firebase-database.js";
 
@@ -310,8 +328,10 @@
             // Helper function to parse "dd.MM.yyyy" to Date object
             function parseDate(dateStr) {
                 if (!dateStr) return new Date(0); // Return a very old date if undefined
-                const [day, month, year] = dateStr.split('.');
-                return new Date(`${year}-${month}-${day}`); // ISO format for consistency
+                const parts = dateStr.split('.');
+                if (parts.length !== 3) return new Date(0); // Geçersiz format
+                const [day, month, year] = parts;
+                return new Date(`${year}-${month}-${day}`); // ISO format
             }
 
             // Function to format Date object to "dd.MM.yyyy"
@@ -422,6 +442,7 @@
                 isEditMode = false;
                 mainElement.classList.remove("edit-mode"); // 'edit-mode' sınıfını kaldır
                 updateReturnButtons();
+                loadDataFromFirebase(); // Silme butonlarını kaldırmak için verileri tekrar yükle
                 pinInput.value = "";
             }
 
@@ -431,20 +452,28 @@
                 try {
                     const snapshot = await get(booksRef);
                     if (snapshot.exists()) {
-                        let books = Object.values(snapshot.val());
+                        const booksData = snapshot.val();
+                        let books = [];
+                        for (let key in booksData) {
+                            books.push({ key: key, ...booksData[key] });
+                        }
 
-                        // Sıralama: önce 'okuyor' durumundakiler en üstte, 'tamamlandı' durumundakiler aşağıda
+                        // Sıralama: önce 'okuyor' durumundakiler en üstte, sonra 'tamamlandı' durumundakiler
                         books.sort((a, b) => {
-                            if (a.status === b.status) {
-                                if (a.status === 'okuyor') {
-                                    // 'okuyor' durumunda, en son başlayan en üstte
-                                    return parseDate(b.borrowDate) - parseDate(a.borrowDate);
-                                } else {
-                                    // 'tamamlandı' durumunda, en son teslim eden en üstte
-                                    return parseDate(b.returnDate) - parseDate(a.returnDate);
-                                }
-                            } else {
+                            // Duruma göre sırala: 'okuyor' önce, 'tamamlandı' sonra
+                            if (a.status !== b.status) {
                                 return a.status === 'okuyor' ? -1 : 1;
+                            }
+
+                            // Aynı durumda ise, 'okuyor' için borrowDate, 'tamamlandı' için returnDate'e göre sırala
+                            if (a.status === 'okuyor') {
+                                const dateA = parseDate(a.borrowDate);
+                                const dateB = parseDate(b.borrowDate);
+                                return dateB - dateA; // En son alınan en üstte
+                            } else {
+                                const dateA = parseDate(a.returnDate);
+                                const dateB = parseDate(b.returnDate);
+                                return dateB - dateA; // En son teslim edilen en üstte
                             }
                         });
 
@@ -454,16 +483,23 @@
                         books.forEach(book => {
                             const row = document.createElement("tr");
                             row.className = book.status === "okuyor" ? "ongoing" : "completed";
+                            row.setAttribute('data-key', book.key); // Firebase anahtarını satıra ekleyin
 
                             // Butonun durumuna göre sınıf ekleyerek renklerini belirleyelim
-                            let buttonClass = "return-book";
-                            let buttonText = "Teslim Et";
-                            let buttonDisabled = !isEditMode || book.status !== "okuyor";
+                            let returnButtonClass = "return-book";
+                            let returnButtonText = "Teslim Et";
+                            let returnButtonDisabled = !isEditMode || book.status !== "okuyor";
 
                             if (book.status === "tamamlandı") {
-                                buttonClass += " completed";
-                                buttonText = "Teslim Edildi";
-                                buttonDisabled = true;
+                                returnButtonClass += " completed";
+                                returnButtonText = "Teslim Edildi";
+                                returnButtonDisabled = true;
+                            }
+
+                            // Silme butonu için HTML
+                            let deleteButtonHTML = '';
+                            if (isEditMode) { // Sadece düzenleme modundayken silme butonu göster
+                                deleteButtonHTML = `<button class="delete-assignment" title="Sil" style="margin-left: 5px;">&#10006;</button>`;
                             }
 
                             row.innerHTML = `
@@ -472,12 +508,16 @@
                                 <td>${book.borrowDate}</td>
                                 <td>${book.status === "okuyor" ? "Okuyor" : (book.returnDate ? book.returnDate : "Tamamlandı")}</td>
                                 <td class="action-cell">
-                                    <button class="${buttonClass}" ${buttonDisabled ? 'disabled' : ''}>${buttonText}</button>
+                                    <button class="${returnButtonClass}" ${returnButtonDisabled ? 'disabled' : ''}>${returnButtonText}</button>
+                                    ${deleteButtonHTML}
                                 </td>
                             `;
                             booksTableBody.appendChild(row);
                         });
                         updateReturnButtons();
+
+                        // Sıralanmış kitapları konsola yazdır (Debug amaçlı)
+                        console.log("Sıralanmış Kitaplar:", books);
                     } else {
                         booksTableBody.innerHTML = "";
                         updateReturnButtons();
@@ -563,6 +603,16 @@
                         } else {
                             button.disabled = true;
                         }
+                    }
+                });
+
+                // Silme butonlarını güncelle
+                const deleteButtons = document.querySelectorAll(".delete-assignment");
+                deleteButtons.forEach(button => {
+                    if (isEditMode) {
+                        button.style.display = "inline-block";
+                    } else {
+                        button.style.display = "none";
                     }
                 });
             }
@@ -829,8 +879,9 @@
                 }
             });
 
-            // Kitap teslim et
+            // Kitap teslim et ve silme butonları için event listener
             booksTableBody.addEventListener("click", async (e) => {
+                // Teslim Et butonuna tıklanması durumunda
                 if (e.target.classList.contains("return-book") && !e.target.disabled && !e.target.classList.contains("completed")) {
                     const row = e.target.closest("tr");
                     const studentName = row.children[0].textContent;
@@ -864,6 +915,36 @@
                     } catch (error) {
                         console.error("Kitap teslim etme hatası:", error);
                         await showAlert("Kitap teslim etme hatası: " + error.message);
+                    }
+                }
+
+                // Silme butonuna tıklanması durumunda
+                if (e.target.classList.contains("delete-assignment")) {
+                    const row = e.target.closest("tr");
+                    const bookKey = row.getAttribute('data-key');
+
+                    if (!bookKey) {
+                        await showAlert("Silinecek kitap ataması bulunamadı.");
+                        return;
+                    }
+
+                    const confirmDelete = await showConfirm("Bu kitap atamasını silmek istediğinize emin misiniz?");
+                    if (!confirmDelete) {
+                        return;
+                    }
+
+                    const bookRef = ref(database, `classes/${classID}/books/${bookKey}`);
+                    try {
+                        await remove(bookRef);
+                        console.log("Kitap ataması başarıyla silindi.");
+                        await loadDataFromFirebase();
+                        // "En İyiler" ve "Öğrenci Kitap Geçmişi" bölümlerini de güncellemek için gerekli fonksiyonları çağırın
+                        // Örneğin:
+                        // await loadBestSection();
+                        // await loadReadingHistory();
+                    } catch (error) {
+                        console.error("Kitap ataması silme hatası:", error);
+                        await showAlert("Kitap ataması silme hatası: " + error.message);
                     }
                 }
             });
@@ -974,115 +1055,107 @@
     </script>
 </head>
 <body>
-    <header>
-        <h1>
+<header>
+<h1>
             Tersane İlkokulu Kitaplık Sistemi
-            <img src="https://cdn.pixabay.com/photo/2013/07/12/17/11/bookworm-151738_1280.png" alt="Kitap Kurdu">
-        </h1>
-    </header>
-    
-    <main>
-        <div style="text-align: center; margin-top: 20px;">
-            <label for="class-select">Sınıf Seçin:</label>
-            <select id="class-select">
-                <!-- Sınıflar Firebase üzerinden yüklenecek -->
-                <option value="">Sınıf Seçin</option>
-            </select>
-        </div>
+            <img alt="Kitap Kurdu" src="https://cdn.pixabay.com/photo/2013/07/12/17/11/bookworm-151738_1280.png"/>
+</h1>
+</header>
+<main>
+<div style="text-align: center; margin-top: 20px;">
+<label for="class-select">Sınıf Seçin:</label>
+<select id="class-select">
+<!-- Sınıflar Firebase üzerinden yüklenecek -->
+<option value="">Sınıf Seçin</option>
+</select>
+</div>
+<div style="text-align: center; margin-top: 20px;">
+<button id="edit-button">Düzenle</button><div id="pin-section" style="display: none;">
+<label for="pin-input">PIN:</label>
+<input id="pin-input" type="password"/> <!-- maxlength kaldırıldı veya artırıldı -->
+<button id="pin-submit">Onayla</button>
+</div><div id="edit-section">
+<h3>Öğrenci ve Kitap Yönetimi</h3>
+<div id="student-book-management">
+<div>
+<h4>Öğrenci Ekle</h4>
+<input id="new-student-name" placeholder="Öğrenci Adı" type="text"/>
+<button id="add-student">Ekle</button>
+<button class="delete-button" id="delete-student">Sil</button>
+</div>
+<div>
+<h4>Kitap Ekle</h4>
+<input id="new-book-name" placeholder="Kitap Adı" type="text"/>
+<button id="add-book">Ekle</button>
+<button class="delete-button" id="delete-book">Sil</button>
+</div>
+<div style="margin-top: 2em;">
+<h4>Kitap Atama</h4>
+<select id="student-select">
+<option value="">Öğrenci Seçin</option>
+</select>
+<select id="book-select">
+<option value="">Kitap Seçin</option>
+</select>
+<button id="assign-book">Ata</button>
+</div>
+</div>
+<button id="save-button">Kaydet</button>
+</div>
+<button id="best-button">En İyiler</button>
+<button id="history-button">Öğrenci Kitap Geçmişi</button>
+</div>
+<section id="best-section" style="display: none; text-align: center; margin-top: 20px;">
+<h3>En İyiler</h3>
+<table id="best-table">
+<thead>
+<tr><th>Öğrenci Adı</th><th>Okunan Kitap Sayısı</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</section>
+<section id="reading-history-section" style="display: none; text-align: center; margin-top: 20px;">
+<h3>Öğrenci Kitap Geçmişi</h3>
+<select id="student-history-select">
+<option value="">Öğrenci Seçin</option>
+</select>
+<button id="list-history">Listele</button>
+<table id="reading-history-table" style="display: none;">
+<thead>
+<tr><th>Kitap İsmi</th><th>Alış Tarihi</th><th>Teslim Tarihi</th></tr>
+</thead>
+<tbody id="reading-history"></tbody>
+</table>
+</section>
+<section id="book-list">
+<table>
+<thead>
+<tr>
+<th>Öğrenci Adı</th>
+<th>Okuduğu Kitap İsmi</th>
+<th>Kitabı Aldığı Tarih</th>
+<th>Okuma Durumu</th>
+<th class="action-column">İşlemler</th> <!-- "İşlemler" sütunu -->
+</tr>
+</thead>
+<tbody id="books">
+<!-- Dinamik olarak kitap bilgileri burada yer alacak -->
+</tbody>
+</table>
+</section>
 
-        <div style="text-align: center; margin-top: 20px;">
-            <button id="edit-button">Düzenle</button>
-            <button id="best-button">En İyiler</button>
-            <button id="history-button">Öğrenci Kitap Geçmişi</button>
-        </div>
-
-        <section id="best-section" style="display: none; text-align: center; margin-top: 20px;">
-            <h3>En İyiler</h3>
-            <table id='best-table'>
-                <thead>
-                    <tr><th>Öğrenci Adı</th><th>Okunan Kitap Sayısı</th></tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </section>
-
-        <section id="reading-history-section" style="display: none; text-align: center; margin-top: 20px;">
-            <h3>Öğrenci Kitap Geçmişi</h3>
-            <select id="student-history-select">
-                <option value="">Öğrenci Seçin</option>
-            </select>
-            <button id="list-history">Listele</button>
-            <table id="reading-history-table" style="display: none;">
-                <thead>
-                    <tr><th>Kitap İsmi</th><th>Alış Tarihi</th><th>Teslim Tarihi</th></tr>
-                </thead>
-                <tbody id="reading-history"></tbody>
-            </table>
-        </section>
-
-        <section id="book-list">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Öğrenci Adı</th>
-                        <th>Okuduğu Kitap İsmi</th>
-                        <th>Kitabı Aldığı Tarih</th>
-                        <th>Okuma Durumu</th>
-                        <th class="action-column">İşlemler</th> <!-- "İşlemler" sütunu -->
-                    </tr>
-                </thead>
-                <tbody id="books">
-                    <!-- Dinamik olarak kitap bilgileri burada yer alacak -->
-                </tbody>
-            </table>
-        </section>
-
-        <div id="pin-section" style="display: none;">
-            <label for="pin-input">PIN:</label>
-            <input type="password" id="pin-input"> <!-- maxlength kaldırıldı veya artırıldı -->
-            <button id="pin-submit">Onayla</button>
-        </div>
-        <div id="edit-section">
-            <h3>Öğrenci ve Kitap Yönetimi</h3>
-            <div id="student-book-management">
-                <div>
-                    <h4>Öğrenci Ekle</h4>
-                    <input type="text" id="new-student-name" placeholder="Öğrenci Adı">
-                    <button id="add-student">Ekle</button>
-                    <button id="delete-student" class="delete-button">Sil</button>
-                </div>
-                <div>
-                    <h4>Kitap Ekle</h4>
-                    <input type="text" id="new-book-name" placeholder="Kitap Adı">
-                    <button id="add-book">Ekle</button>
-                    <button id="delete-book" class="delete-button">Sil</button>
-                </div>
-                <div style="margin-top: 2em;">
-                    <h4>Kitap Atama</h4>
-                    <select id="student-select">
-                        <option value="">Öğrenci Seçin</option>
-                    </select>
-                    <select id="book-select">
-                        <option value="">Kitap Seçin</option>
-                    </select>
-                    <button id="assign-book">Ata</button>
-                </div>
-            </div>
-            <button id="save-button">Kaydet</button>
-        </div>
-    </main>
-
-    <!-- Modal Dialog -->
-    <dialog id="modal">
-        <div id="modal-content">
-            <p id="modal-message"></p>
-            <input type="text" id="modal-input" />
-            <div id="modal-buttons">
-                <button class="ok-btn">Tamam</button>
-                <button class="cancel-btn" style="display: none;">İptal</button>
-                <button class="confirm-btn" style="display: none;">Onayla</button>
-            </div>
-        </div>
-    </dialog>
+</main>
+<!-- Modal Dialog -->
+<dialog id="modal">
+<div id="modal-content">
+<p id="modal-message"></p>
+<input id="modal-input" type="text"/>
+<div id="modal-buttons">
+<button class="ok-btn">Tamam</button>
+<button class="cancel-btn" style="display: none;">İptal</button>
+<button class="confirm-btn" style="display: none;">Onayla</button>
+</div>
+</div>
+</dialog>
 </body>
 </html>
